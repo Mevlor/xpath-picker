@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>嵌套子页面</title>
+<style>
+  body { font: 13px/1.5 sans-serif; margin: 10px; color: #222; }
+  #cart { display: block; padding: 16px; border: 1px solid #ccc; width: 380px; }
+  .cart-head { padding: 6px; }
+  #pay-now { padding: 8px 22px; }
+  #order-table { border-collapse: collapse; margin-top: 14px; }
+  #order-table th, #order-table td { border: 1px solid #ddd; padding: 6px 10px; }
+</style>
+</head>
+<body>
+<div id="cart" class="cart-panel">
+  <div class="cart-head"><span class="cart-title">购物车</span></div>
+  <button id="pay-now" class="btn primary pay-btn" type="button">立即支付</button>
+</div>
+<table id="order-table">
+  <thead>
+    <tr><th>订单号</th><th>状态</th><th>操作</th></tr>
+  </thead>
+  <tbody>
+    <tr class="order-row"><td class="order-id">A001</td><td class="order-status">待发货</td><td><button class="op-btn" type="button">查看</button></td></tr>
+    <tr class="order-row"><td class="order-id">A002</td><td class="order-status">已发货</td><td><button class="op-btn" type="button">查看</button></td></tr>
+    <tr class="order-row"><td class="order-id">A003</td><td class="order-status">已完成</td><td><button class="op-btn" type="button">查看</button></td></tr>
+    <tr class="order-row"><td class="order-id">A004</td><td class="order-status">待付款</td><td><button class="op-btn" type="button">查看</button></td></tr>
+  </tbody>
+</table>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>state class fixture</title>
+<style>
+  body { margin: 0; padding: 12px; font: 13px/1.4 sans-serif; }
+  #filter { display: flex; gap: 8px; padding: 6px 0 10px; }
+  .tab-item, .other-item { padding: 4px 10px; border: 1px solid #ddd; }
+  .tab-item.active, .other-item.active { color: #1a56db; font-weight: 600; }
+  .order-row { display: flex; padding: 4px 0; }
+  .cell {
+    width: 120px; height: 30px; line-height: 30px; padding: 0 8px;
+    margin-right: 6px; border: 1px solid #ddd;
+  }
+  .cell.auxo-table-cell-row-hover { background: #eef3ff; }
+  #target-box {
+    display: inline-block; margin-top: 12px; padding: 6px 12px; border: 1px solid #ccc;
+  }
+</style>
+</head>
+<body>
+  <div id="filter">
+    <span class="tab-item active">全部</span>
+    <span class="other-item">全部</span>
+  </div>
+
+  <div class="order-row" id="row-1">
+    <div class="cell cell-a">待处理</div>
+    <div class="cell cell-b">待处理</div>
+  </div>
+  <div class="order-row" id="row-2">
+    <div class="cell cell-c">待处理</div>
+    <div class="cell cell-d">待处理</div>
+  </div>
+
+  <span id="target-box">发票管理</span>
+
+  <script>
+    for (const cell of document.querySelectorAll('.cell')) {
+      cell.addEventListener('mouseenter', () => cell.classList.add('auxo-table-cell-row-hover'));
+      cell.addEventListener('mouseleave', () => cell.classList.remove('auxo-table-cell-row-hover'));
+    }
+    window.__setActive = (selector) => {
+      document.querySelectorAll('.tab-item, .other-item').forEach((node) => node.classList.remove('active'));
+      document.querySelector(selector).classList.add('active');
+    };
+  </script>
+</body>
+</html>

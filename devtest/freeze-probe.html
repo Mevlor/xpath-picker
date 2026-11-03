@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>XPFREEZEPROBE · 深度冻结自测</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 18px; background: #14161a; color: #e7e9ee;
+         font: 13px/1.55 system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  h1 { margin: 0 0 4px; font-size: 16px; }
+  .hint { margin: 0 0 14px; color: #9aa3b2; }
+  .hint code { background: #1e2128; padding: 1px 5px; border-radius: 4px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 8px; }
+  .card { background: #1b1e24; border: 1px solid #2a2f39; border-radius: 8px; padding: 10px 12px; }
+  .card h2 { margin: 0 0 2px; font-size: 11px; letter-spacing: .04em; color: #8b94a5; font-weight: 600; }
+  .num { display: block; font: 600 22px/1.25 ui-monospace, Consolas, monospace;
+         color: #7ee2b8; font-variant-numeric: tabular-nums; }
+  .sub { font-size: 11px; color: #77808f; }
+  .wide { grid-column: 1 / -1; }
+  .track { position: relative; height: 6px; margin-top: 8px; background: #252a33; border-radius: 3px; overflow: hidden; }
+  .dot { position: absolute; top: 0; left: 0; width: 14px; height: 6px; border-radius: 3px;
+         background: #7ee2b8; animation: slide 1.4s linear infinite; }
+  @keyframes slide { from { left: 0 } to { left: calc(100% - 14px) } }
+  iframe { width: 100%; height: 158px; border: 1px solid #2a2f39; border-radius: 6px; background: #101216; }
+  button { font: inherit; padding: 3px 9px; border-radius: 6px; border: 1px solid #333a47;
+           background: #232833; color: #e7e9ee; cursor: pointer; }
+  button:hover { background: #2b3140; }
+  #log { font: 11px/1.6 ui-monospace, Consolas, monospace; color: #b9c2d0; max-height: 104px; overflow: auto; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>深度冻结自测台</h1>
+<p class="hint">打开侧边栏 → 点「冻结」或按 <code>Ctrl+Shift+Y</code>。预期：六张卡的数字同时停住、进度条停住、点击日志不再新增；解冻后从停下的位置继续而不是跳变。控制台执行 <code>__XP_FREEZE_ENGINE__.stats()</code> 可看队列计数。</p>
+
+<div class="grid">
+  <div class="card"><h2>setTimeout 链</h2><span class="num" id="v-timeout">0</span><span class="sub">每 100ms +1，按剩余时间入队</span></div>
+  <div class="card"><h2>setInterval</h2><span class="num" id="v-interval">0</span><span class="sub">每 100ms +1</span></div>
+  <div class="card"><h2>requestAnimationFrame</h2><span class="num" id="v-raf">0</span><span class="sub">每帧 +1</span></div>
+  <div class="card"><h2>MutationObserver</h2><span class="num" id="v-observer">0</span><span class="sub" id="obs-target">被改写的文本</span></div>
+  <div class="card"><h2>CSS 动画</h2><span class="num" id="v-anim">0</span><span class="sub">running 动画数</span>
+    <div class="track"><div class="dot"></div></div>
+  </div>
+  <div class="card"><h2>媒体</h2><span class="num" id="v-media">—</span><span class="sub">audio.paused</span>
+    <button id="audio-start" type="button">启动静音音频</button>
+  </div>
+  <div class="card wide"><h2>子框架 iframe（srcdoc）</h2>
+    <iframe id="frame" title="sub-frame"></iframe>
+  </div>
+  <div class="card wide"><h2>页面事件是否被拦</h2><div id="log">尚未收到事件</div></div>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+
+  var nTimeout = 0;
+  (function tick() {
+    $('v-timeout').textContent = ++nTimeout;
+    setTimeout(tick, 100);
+  })();
+
+  var nInterval = 0;
+  var nMutations = 0;
+  setInterval(function () {
+    $('v-interval').textContent = ++nInterval;
+    $('obs-target').textContent = '被改写的文本 ' + (++nMutations);
+  }, 100);
+
+  var nRaf = 0;
+  (function loop() {
+    $('v-raf').textContent = ++nRaf;
+    requestAnimationFrame(loop);
+  })();
+
+  var nObserved = 0;
+  new MutationObserver(function () {
+    $('v-observer').textContent = ++nObserved;
+  }).observe($('obs-target'), { childList: true, characterData: true, subtree: true });
+
+  setInterval(function () {
+    var list = document.getAnimations ? document.getAnimations() : [];
+    var running = 0;
+    for (var i = 0; i < list.length; i++) if (list[i].playState === 'running') running++;
+    $('v-anim').textContent = running;
+  }, 200);
+
+  $('audio-start').addEventListener('click', function () {
+    var rate = 8000, samples = rate, ab = new ArrayBuffer(44 + samples * 2);
+    var dv = new DataView(ab);
+    var str = function (offset, text) {
+      for (var i = 0; i < text.length; i++) dv.setUint8(offset + i, text.charCodeAt(i));
+    };
+    str(0, 'RIFF'); dv.setUint32(4, 36 + samples * 2, true); str(8, 'WAVEfmt ');
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true);
+    dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+    str(36, 'data'); dv.setUint32(40, samples * 2, true);
+    var url = URL.createObjectURL(new Blob([ab], { type: 'audio/wav' }));
+    var audio = new Audio(url);
+    audio.loop = true;
+    // 用事件而不是定时器刷新，冻结后 pause 事件仍会派发，能直接看到 playing -> paused
+    audio.addEventListener('pause', function () { $('v-media').textContent = 'paused'; });
+    audio.addEventListener('play', function () { $('v-media').textContent = 'playing'; });
+    audio.play().then(function () {
+      $('v-media').textContent = 'playing';
+    }).catch(function () {
+      $('v-media').textContent = '播放被拦';
+    });
+    document.body.appendChild(audio);
+    setInterval(function () {
+      $('v-media').textContent = audio.paused ? 'paused' : 'playing';
+    }, 150);
+  });
+
+  var events = 0;
+  var lines = [];
+  ['click', 'keydown', 'wheel', 'pointerdown', 'contextmenu'].forEach(function (type) {
+    document.addEventListener(type, function () {
+      events++;
+      lines.push(events + '. ' + type + ' @ ' + Math.round(performance.now()) + 'ms');
+      $('log').textContent = lines.slice(-8).join('\n');
+    });
+  });
+
+  var child = [
+    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>',
+    'body{margin:0;padding:8px 10px;background:#101216;color:#e7e9ee;font:12px/1.5 system-ui,"Microsoft YaHei",sans-serif}',
+    '.row{display:flex;gap:22px;align-items:flex-end}',
+    'b{display:block;font:600 20px/1.2 ui-monospace,Consolas,monospace;color:#79c0ff;font-variant-numeric:tabular-nums}',
+    'span{font-size:11px;color:#77808f}',
+    '.track{position:relative;height:6px;margin-top:8px;background:#252a33;border-radius:3px;overflow:hidden}',
+    '.dot{position:absolute;top:0;left:0;width:14px;height:6px;border-radius:3px;background:#79c0ff;animation:slide 1.4s linear infinite}',
+    '@keyframes slide{from{left:0}to{left:calc(100% - 14px)}}',
+    '</style></head><body>',
+    '<div class="row">',
+    '<div><span>子框架 setInterval</span><b id="i">0</b></div>',
+    '<div><span>子框架 rAF</span><b id="r">0</b></div>',
+    '</div>',
+    '<div class="track"><div class="dot"></div></div>',
+    '<script>',
+    'var i=0,r=0;setInterval(function(){document.getElementById("i").textContent=++i;},100);',
+    '(function loop(){document.getElementById("r").textContent=++r;requestAnimationFrame(loop);})();',
+    '<\/script></body></html>'
+  ].join('');
+
+  $('frame').srcdoc = child;
+})();
+</script>
+</body>
+</html>

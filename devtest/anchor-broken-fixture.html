@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>anchor broken fixture</title>
+<style>
+  body { margin: 0; padding: 12px; font: 13px/1.4 sans-serif; }
+  .panel-shell { width: 320px; border: 1px solid #ddd; padding: 10px; }
+  .row { display: flex; gap: 16px; }
+  .amount { padding: 4px 8px; border: 1px solid #eee; }
+  .status { padding: 4px 8px; border: 1px solid #eee; }
+</style>
+</head>
+<body>
+  <div id="panel-anchor" class="panel-shell">
+    <div class="row">
+      <span class="amount">¥99.00</span>
+      <span class="status">已发货</span>
+    </div>
+  </div>
+  <script>
+    window.__renameAnchor = (nextId) => {
+      document.getElementById('panel-anchor').id = nextId;
+    };
+    window.__restoreAnchor = (id) => {
+      document.getElementById(id).id = 'panel-anchor';
+    };
+  </script>
+</body>
+</html>

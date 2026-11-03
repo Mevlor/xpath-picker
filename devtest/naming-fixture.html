@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>naming fixture</title>
+<style>
+  body { margin: 0; padding: 12px; font: 13px/1.4 sans-serif; }
+  table { border-collapse: collapse; margin-bottom: 14px; }
+  th, td { border: 1px solid #ddd; padding: 6px 10px; }
+  .menu-entry { display: block; width: 180px; padding: 6px 10px; border: 1px solid #eee; cursor: default; }
+  .menu-badge { margin-left: 6px; padding: 0 4px; background: #eef; border-radius: 8px; font-size: 11px; }
+  .stats span { display: inline-block; width: 48px; height: 20px; background: #f6f6f6; }
+  .row.is-hover { width: 120px; height: 24px; background: #fafafa; }
+</style>
+</head>
+<body>
+  <table id="order-table">
+    <thead>
+      <tr><th>订单号</th><th>订单金额</th><th>下单时间</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="col-no">12345678901234</td><td class="col-amount">¥99.00</td><td class="col-time">2026-10-01</td></tr>
+    </tbody>
+  </table>
+
+  <nav class="menu">
+    <div class="menu-entry" id="entry-goods">国家补贴订单<span class="menu-badge">0</span></div>
+  </nav>
+
+  <div class="stats">
+    <span class="KChM"></span>
+    <span class="POvAGNG"></span>
+  </div>
+
+  <div class="row is-hover"></div>
+
+  <table>
+    <thead>
+      <tr><th>状态</th><th>提交时间</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>待发货</td><td>2026-10-02 09:15</td></tr>
+      <tr><td>待发货</td><td>2026-10-02 10:40</td></tr>
+    </tbody>
+  </table>
+
+  <div data-testid="beast-core-grid-row" style="display:flex;gap:8px;padding:12px 0 12px 40px;">
+    <span role="gridcell" style="width:36px;height:20px;background:#f6f6f6;"></span>
+    <span role="gridcell" style="width:36px;height:20px;background:#f6f6f6;"></span>
+    <span role="gridcell" style="width:36px;height:20px;background:#f6f6f6;"></span>
+  </div>
+
+  <span data-testid="beast-core" class="beast-core">View all</span>
+</body>
+</html>

@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>XPath Picker</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">XP</div>
+        <div class="brand-text">
+          <strong>XPath Picker</strong>
+          <span id="pageHint">加载中…</span>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button id="validateBtn" class="top-btn" type="button" title="验证 XPath：粘贴后高亮页面匹配元素">验证</button>
+        <button id="settingsBtn" class="icon-btn" type="button" title="AI 设置" aria-label="AI 设置">⚙</button>
+      </div>
+    </header>
+
+    <main id="listView" class="main">
+      <div class="pick-row">
+        <button id="pickBtn" class="pick-btn" type="button" disabled>
+          <span class="dot"></span>
+          <span id="pickText">开始拾取</span>
+        </button>
+        <button
+          id="freezeBtn"
+          class="freeze-btn"
+          type="button"
+          disabled
+          title="冻结页面：锁定点击/按键/滚动，暂停定时器、动画、媒体、观察器与 iframe；Esc 解冻；冻结与拾取可同时开启"
+        >
+          <span id="freezeText">冻结</span>
+        </button>
+      </div>
+      <p id="pickHint" class="hint">点击「开始拾取」，然后在页面上连续点击元素</p>
+
+      <div id="listBar" class="list-tools" hidden>
+        <span id="listInfo" class="list-info"></span>
+        <div class="list-actions">
+          <button id="batchAIBtn" class="mini-btn" type="button" title="为所有元素并发生成 XPath；关闭面板后结果仍保留">批量 AI</button>
+          <button id="batchCopyBtn" class="mini-btn" type="button">批量复制</button>
+          <span id="clearWrap" class="confirm-wrap">
+            <button id="clearBtn" class="mini-btn" type="button" aria-haspopup="dialog" aria-expanded="false">清空</button>
+            <div id="clearConfirm" class="confirm-pop" role="dialog" aria-label="清空确认" hidden>
+              <p>清空全部已拾取元素？</p>
+              <div class="confirm-actions">
+                <button id="clearCancel" class="mini-btn" type="button">取消</button>
+                <button id="clearOk" class="mini-btn danger" type="button">清空</button>
+              </div>
+            </div>
+          </span>
+        </div>
+      </div>
+
+      <ul id="items" class="items" hidden></ul>
+
+      <div id="empty" class="empty" hidden>
+        <div class="empty-glyph">+</div>
+        <p>还没有拾取任何元素</p>
+        <p class="sub">拾取后可切换锚点、父级、子级、兄弟节点，或用 AI 生成稳定 XPath</p>
+      </div>
+
+      <div id="unsupported" class="empty" hidden>
+        <div class="empty-glyph">×</div>
+        <p>当前页面不支持拾取</p>
+        <p class="sub">请在普通网页中使用；若刚安装或更新扩展，请刷新页面后重试</p>
+      </div>
+    </main>
+
+    <section id="settingsView" class="settings" hidden>
+      <div class="settings-head">
+        <button id="backBtn" class="icon-btn" type="button" title="返回" aria-label="返回">←</button>
+        <h1>AI 设置</h1>
+      </div>
+      <p class="hint">使用 OpenAI 兼容的 Chat Completions 接口生成稳定 XPath，配置仅保存在本机。</p>
+
+      <label class="field">
+        <span>API 地址</span>
+        <input id="apiBase" type="text" spellcheck="false" placeholder="https://api.openai.com/v1">
+        <span class="field-note">填写到版本路径为止，例如 https://api.openai.com/v1</span>
+      </label>
+
+      <label class="field">
+        <span>API Key</span>
+        <input id="apiKey" type="password" spellcheck="false" autocomplete="off" placeholder="sk-...">
+        <span class="field-note">仅保存在本机；本地兼容服务可留空</span>
+      </label>
+
+      <label class="field">
+        <span>模型</span>
+        <input id="model" type="text" spellcheck="false" placeholder="gpt-4o-mini">
+      </label>
+
+      <label class="field checkbox">
+        <input id="fullHtml" type="checkbox">
+        <span>发送完整祖先 HTML</span>
+        <span class="field-note">关闭时祖先只发送自身标签与属性，子节点用注释概括，更省 token；目标元素始终发送完整代码</span>
+      </label>
+
+      <button id="saveSettings" class="primary-btn" type="button">保存设置</button>
+    </section>
+
+    <section id="validateView" class="settings validate" hidden>
+      <div class="settings-head">
+        <button id="validateBackBtn" class="icon-btn" type="button" title="返回" aria-label="返回">←</button>
+        <h1>XPath 验证</h1>
+      </div>
+
+      <label class="field">
+        <span>XPath</span>
+        <textarea id="validateXpath" rows="3" spellcheck="false" placeholder="粘贴要验证的 XPath，例如 //div[@class='news-list']//a"></textarea>
+        <span class="field-note">输入后自动高亮页面中的匹配元素；按 Esc 清除高亮</span>
+      </label>
+
+      <div class="validate-bar">
+        <span id="validateStatus" class="valid">等待输入</span>
+        <button id="validateClear" class="mini-btn" type="button">清除</button>
+      </div>
+
+      <ul id="validateList" class="match-list"></ul>
+      <div id="validateEmpty" class="validate-empty" hidden>没有匹配的元素</div>
+    </section>
+
+    <footer class="statusbar">
+      <span id="status">未连接页面</span>
+      <span id="count" class="count">0 项</span>
+    </footer>
+  </div>
+
+  <div id="aiModal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="aiTitle">
+      <div class="modal-head">
+        <h2 id="aiTitle">AI 生成 XPath</h2>
+        <button id="aiClose" class="icon-btn" type="button" title="关闭（AI 生成会在后台继续）" aria-label="关闭">✕</button>
+      </div>
+
+      <div id="aiTarget" class="ai-target"></div>
+
+      <div id="aiMode" class="seg" role="group" aria-label="目标类型">
+        <button type="button" data-mode="unique" class="active">唯一元素</button>
+        <button type="button" data-mode="list">列表元素</button>
+      </div>
+
+      <textarea id="aiPrompt" rows="2" placeholder="补充要求（可选），例如：只匹配当前表格的数据行，不要表头"></textarea>
+
+      <div id="aiResult" class="ai-result" hidden>
+        <div class="ai-current">
+          <div class="ai-current-head">
+            <span>列表中的当前值</span>
+            <span id="aiDelta" class="ai-delta"></span>
+          </div>
+          <div class="ai-current-line"><span class="ai-current-key">变量</span><code id="aiCurName"></code></div>
+          <div class="ai-current-line"><span class="ai-current-key">XPath</span><code id="aiCurXpath"></code></div>
+        </div>
+        <label class="field">
+          <span>命名（变量名）</span>
+          <input id="aiName" type="text" spellcheck="false" placeholder="例如：productPrice">
+          <span class="field-note">回写到列表时作为变量名</span>
+        </label>
+        <label class="field">
+          <span>XPath</span>
+          <textarea id="aiXpath" rows="5" spellcheck="false"></textarea>
+        </label>
+        <div id="aiValid" class="valid"></div>
+        <div id="aiReason" class="ai-reason" hidden>
+          <span class="ai-reason-key">稳定性说明</span>
+          <p id="aiReasonText"></p>
+        </div>
+        <label class="check">
+          <input id="aiWriteBack" type="checkbox" checked>
+          <span>回写覆盖列表中的 XPath</span>
+        </label>
+      </div>
+
+      <div id="aiError" class="ai-error" hidden></div>
+
+      <div class="modal-foot">
+        <button id="aiCopy" class="ghost-btn" type="button" hidden>复制</button>
+        <button id="aiRun" class="primary-btn" type="button">生成</button>
+        <button id="aiApply" class="primary-btn" type="button" hidden>回写到列表</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

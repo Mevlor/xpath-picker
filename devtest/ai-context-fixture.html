@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>XP_AI_CONTEXT_FIXTURE</title>
+<style>
+  body { font: 13px/1.6 system-ui, "Microsoft YaHei", sans-serif; margin: 0; padding: 20px; }
+  .toolbar { display: flex; align-items: center; gap: 12px; padding: 10px; background: #fafafa; }
+  .filter-label { padding: 2px 6px; }
+  .auxo-select { width: 160px; border: 1px solid #ccc; padding: 4px 8px; }
+  .auxo-select-selector { display: flex; align-items: center; }
+  .auxo-select-selection-item { flex: 1; }
+  #invoice-panel { padding: 20px; background: #f7f8fa; margin-top: 16px; }
+  table { border-collapse: collapse; width: 640px; }
+  td { border: 1px solid #eee; padding: 6px 8px; }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <div class="filter-label">订单状态</div>
+  <div class="auxo-select"><div class="auxo-select-selector"><span class="auxo-select-selection-item" title="待发货">待发货</span></div></div>
+</div>
+<div id="invoice-panel">
+  <table class="auxo-table">
+    <tbody class="auxo-table-tbody">
+      <tr class="auxo-table-row"><td>1</td><td>INV-001</td><td>2026-10-01</td><td><span><a href="#upload-1">上传发票</a></span></td></tr>
+      <tr class="auxo-table-row"><td>2</td><td>INV-002</td><td>2026-10-02</td><td><span><a href="#upload-2">上传发票</a></span></td></tr>
+      <tr class="auxo-table-row"><td>3</td><td>INV-003</td><td>2026-10-03</td><td><span><a href="#upload-3">上传发票</a></span></td></tr>
+    </tbody>
+  </table>
+</div>
+</body>
+</html>

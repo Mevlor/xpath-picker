@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>list column fixture</title>
+<style>
+  body { margin: 0; padding: 12px; font: 14px/1.6 sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }
+  td, th { border: 1px solid #ccc; padding: 6px; }
+  ul { list-style: none; margin: 0 0 16px; padding: 0; }
+  li { padding: 4px 6px; }
+  a { color: #06c; }
+  main { display: block; }
+</style>
+</head>
+<body>
+  <section id="orders">
+    <table class="aurora-table">
+      <thead>
+        <tr><th>订单号</th><th>金额</th><th>状态</th><th>操作</th></tr>
+      </thead>
+      <tbody class="aurora-table-tbody">
+        <tr><td><a href="#o1">A001</a></td><td>¥10.00</td><td><span class="st">待发货</span></td><td><button class="op">详情</button></td></tr>
+        <tr><td><a href="#o2">A002</a></td><td>¥20.00</td><td><span class="st">待发货</span></td><td><button class="op">详情</button></td></tr>
+        <tr><td><a href="#o3">A003</a></td><td>¥30.00</td><td><span class="st">已发货</span></td><td><button class="op">详情</button></td></tr>
+        <tr><td><a href="#o4">A004</a></td><td>¥40.00</td><td><span class="st">已完成</span></td><td><button class="op">详情</button></td></tr>
+        <tr><td colspan="2"><a href="#o5">A005</a></td><td><span class="st">待发货</span></td><td><button class="op">详情</button></td></tr>
+        <tr><td><a href="#o6">A006</a></td><td>¥60.00</td><td><span class="st">已完成</span></td><td><button class="op">详情</button></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <nav id="side-nav">
+    <ul class="menu">
+      <li class="menu-title">导航</li>
+      <li><a data-btm="nav" class="order-link" href="#x1">我的订单</a></li>
+      <li><a data-btm="nav" class="refund-link" href="#x2">退款管理</a></li>
+      <li><a data-btm="nav" class="review-link" href="#x3">评价管理</a></li>
+      <li><a data-btm="nav" class="invoice-link" href="#x4">发票管理</a></li>
+      <li><a data-btm="nav" class="setting-link" href="#x5">店铺设置</a></li>
+    </ul>
+  </nav>
+
+  <main id="scatter">
+    <section><a data-btm="scatter" class="scatter-one" href="#s1">入口一</a></section>
+    <article><a data-btm="scatter" class="scatter-two" href="#s2">入口二</a></article>
+    <aside><a data-btm="scatter" class="scatter-three" href="#s3">入口三</a></aside>
+    <div><a data-btm="scatter" class="scatter-four" href="#s4">入口四</a></div>
+    <footer><a data-btm="scatter" class="scatter-five" href="#s5">入口五</a></footer>
+  </main>
+</body>
+</html>

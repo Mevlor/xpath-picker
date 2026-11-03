@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>XPX_PATH_FIXTURE</title>
+<style>
+  body { font: 13px/1.6 system-ui, "Microsoft YaHei", sans-serif; margin: 0; padding: 20px; }
+  .ant-tabs-nav-list { display: flex; gap: 8px; border-bottom: 1px solid #ddd; }
+  .ant-tabs-tab { padding: 8px 14px; cursor: pointer; color: #555; }
+  .ant-tabs-tab-active { color: #1677ff; }
+  table { border-collapse: collapse; margin-top: 18px; width: 900px; }
+  td { border: 1px solid #eee; padding: 6px 8px; }
+</style>
+</head>
+<body>
+<div class="ant-tabs">
+  <div class="ant-tabs-nav-list">
+    <div id="rc-tabs-0-tab-/ffa/saas/platform-invoice" role="tab" class="ant-tabs-tab ant-tabs-tab-active" aria-selected="true">
+      <span class="ant-tabs-tab-btn">平台给我开票</span>
+    </div>
+    <div id="rc-tabs-0-tab-/ffa/saas/customer-invoice" role="tab" class="ant-tabs-tab">
+      <span class="ant-tabs-tab-btn">客户开票</span>
+    </div>
+    <div id="rc-tabs-0-tab-/ffa/saas/other-invoice" role="tab" class="ant-tabs-tab">
+      <span class="ant-tabs-tab-btn">其他开票</span>
+    </div>
+  </div>
+</div>
+
+<table>
+  <tbody class="auxo-table-tbody">
+    <tr class="auxo-table-row">
+      <td>1</td><td>INV-001</td><td>2026-10-01</td><td>已开票</td><td>120.00</td>
+      <td>甲公司</td><td>91310000</td><td>服务费</td><td>张工</td>
+      <td><span><a href="#upload-1">上传发票</a></span></td>
+    </tr>
+    <tr class="auxo-table-row">
+      <td>2</td><td>INV-002</td><td>2026-10-02</td><td>待开票</td><td>80.00</td>
+      <td>乙公司</td><td>91310001</td><td>服务费</td><td>李工</td>
+      <td><span><a href="#upload-2">上传发票</a></span></td>
+    </tr>
+    <tr class="auxo-table-row">
+      <td>3</td><td>INV-003</td><td>2026-10-03</td><td>待开票</td><td>60.00</td>
+      <td>丙公司</td><td>91310002</td><td>服务费</td><td>王工</td>
+      <td><span><a href="#upload-3">上传发票</a></span></td>
+    </tr>
+  </tbody>
+</table>
+
+<div id="long-note">售后编码：23755054145138 售后类型：补寄 申请原因：其他原因 售后申请说明：协商一致申请补寄 补寄地址：收件人韩* 手机号 13800000000 备注：这段文字用于确认验证卡片复制时取到完整内容而不是卡片上八十个字的预览截断。</div>
+</body>
+</html>

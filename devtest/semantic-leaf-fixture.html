@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>XP_SEMANTIC_LEAF_FIXTURE</title>
+<style>
+  body { font: 13px/1.6 system-ui, "Microsoft YaHei", sans-serif; margin: 0; padding: 16px; }
+  h3 { margin: 12px 0 8px; font-size: 14px; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }
+  td, th { border: 1px solid #eee; padding: 6px 8px; text-align: left; }
+  button { border: 1px solid #ddd; background: #fff; padding: 2px 8px; cursor: pointer; }
+</style>
+</head>
+<body>
+<h3>评价管理</h3>
+<table class="next-table" id="review-table">
+  <thead><tr><th>评价内容</th><th>评分</th><th>时间</th><th>商品</th><th>状态</th><th>操作</th></tr></thead>
+  <tbody class="next-table-body">
+    <tr class="next-table-row">
+      <td>质量很好，包装完整</td><td>5</td><td>2026-10-01</td><td>秋季外套</td><td>待回复</td>
+      <td class="next-table-cell last"><div class="next-table-cell-wrapper"><div class="next-btn-wrap"><div class="next-inline"><div class="next-inline-item"><button class="next-btn next-btn-text"><span class="next-btn-helper">评价回复</span></button></div></div></div></div></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>退款管理</h3>
+<table class="auxo-table" id="refund-table">
+  <thead><tr><th>退款单号</th><th>金额</th><th>时间</th><th>商品</th><th>状态</th><th>操作</th></tr></thead>
+  <tbody class="auxo-table-body">
+    <tr class="auxo-table-row">
+      <td>RF-001</td><td>¥128</td><td>2026-10-02</td><td>秋季外套</td><td>待处理</td>
+      <td class="auxo-table-cell"><div class="auxo-table-cell-wrapper"><div class="auxo-btn-wrap"><div class="auxo-inline"><div class="auxo-inline-item"><button class="auxo-btn auxo-btn-text"><span class="auxo-btn-helper">详情</span></button></div></div></div></div></td>
+    </tr>
+    <tr class="auxo-table-row">
+      <td>RF-002</td><td>¥256</td><td>2026-10-03</td><td>秋季外套</td><td>待处理</td>
+      <td class="auxo-table-cell"><div class="auxo-table-cell-wrapper"><div class="auxo-btn-wrap"><div class="auxo-inline"><div class="auxo-inline-item"><button class="auxo-btn auxo-btn-text"><span class="auxo-btn-helper">详情</span></button></div></div></div></div></td>
+    </tr>
+    <tr class="auxo-table-row">
+      <td>RF-003</td><td>¥64</td><td>2026-10-04</td><td>秋季外套</td><td>待处理</td>
+      <td class="auxo-table-cell"><div class="auxo-table-cell-wrapper"><div class="auxo-btn-wrap"><div class="auxo-inline"><div class="auxo-inline-item"><button class="auxo-btn auxo-btn-text"><span class="auxo-btn-helper">详情</span></button></div></div></div></div></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>工单</h3>
+<table class="beast-table" id="ticket-table">
+  <thead><tr><th>工单号</th><th>状态</th><th>操作</th></tr></thead>
+  <tbody class="beast-table-body">
+    <tr class="beast-table-row">
+      <td>TK-001</td><td>待跟进</td>
+      <td><div class="beast-btn-wrap"><button class="beast-btn"><span class="ticket-action">处理</span></button><button class="beast-btn"><span class="other-action">处理</span></button></div></td>
+    </tr>
+  </tbody>
+</table>
+</body>
+</html>

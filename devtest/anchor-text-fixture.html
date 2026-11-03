@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>XP_ANCHOR_TEXT</title>
+<style>
+  body { font: 13px/1.6 system-ui, "Microsoft YaHei", sans-serif; margin: 0; padding: 20px; }
+  .live { display: block; padding: 8px; }
+  .auxo-form-item { padding: 8px; }
+  .styles-module_label__i3IvP { margin-bottom: 4px; color: #555; }
+  .auxo-select { width: 180px; height: 30px; border: 1px solid #ccc; padding: 4px 8px; }
+  .auxo-select-selector { display: flex; align-items: center; gap: 6px; }
+  .auxo-select-selection-item { flex: 1; }
+  .auxo-select-arrow { width: 8px; height: 8px; border-right: 1px solid #999; border-bottom: 1px solid #999; transform: rotate(45deg); }
+</style>
+</head>
+<body>
+<!-- 隐藏的重复表单：制造同名标签，逼迫锚点仍用文本定位 -->
+<div class="ghost" style="display:none">
+  <div class="styles-module_form-item__a1">
+    <div class="styles-module_label__i3IvP">订单状态</div>
+    <div class="auxo-select"><div class="auxo-select-selector">
+      <span class="auxo-select-selection-item" title="待发货">待发货</span>
+    </div></div>
+  </div>
+</div>
+<div class="live">
+  <div class="styles-module_form-item__b2">
+    <div class="styles-module_label__i3IvP">订单状态</div>
+    <div class="auxo-select"><div class="auxo-select-selector">
+      <span class="auxo-select-selection-item" title="待发货">待发货</span>
+      <span class="auxo-select-arrow" aria-hidden="true"></span>
+    </div></div>
+  </div>
+  <div class="auxo-form-item">
+    <div class="styles-module_label__i3IvP">订单类型：</div>
+    <div class="auxo-select"><div class="auxo-select-selector">
+      <span class="auxo-select-selection-item" title="全部">全部</span>
+      <span class="auxo-select-arrow" aria-hidden="true"></span>
+    </div></div>
+  </div>
+</div>
+<script>
+  window.__setStatus = function (value) {
+    const span = document.querySelector('.live .auxo-select-selection-item');
+    span.setAttribute('title', value);
+    span.textContent = value;
+  };
+</script>
+</body>
+</html>

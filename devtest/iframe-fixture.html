@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Iframe Fixture</title>
+<style>
+  body { font: 13px/1.5 sans-serif; margin: 12px; color: #222; }
+  #top-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+  #top-btn { padding: 8px 18px; }
+  #child-frame { width: 660px; height: 460px; border: 1px solid #bbb; }
+</style>
+</head>
+<body>
+<div id="top-row">
+  <button id="top-btn" class="top-action" type="button">顶层按钮</button>
+  <input id="top-name" type="text" value="顶层输入">
+</div>
+<iframe id="child-frame" src="iframe-child.html" title="嵌套子页面"></iframe>
+</body>
+</html>
