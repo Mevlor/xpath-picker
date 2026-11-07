@@ -236,6 +236,24 @@ async function main() {
         previews: shown('.xp-box.xp-preview')
       };
     })()`);
+    const badgeNumbers = async (where) => pageEval(`(() => {
+      const doc = ${where === 'child' ? "document.querySelector('#child-frame').contentDocument" : 'document'};
+      const host = doc && doc.getElementById('__xp_picker_host__');
+      const root = host && host.shadowRoot;
+      if (!root) return [];
+      return Array.from(root.querySelectorAll('.xp-box:not(.xp-preview):not(.xp-anchor)'))
+        .filter((box) => getComputedStyle(box).display !== 'none')
+        .map((box) => Number((box.querySelector('.xp-num-main') || {}).textContent || 0))
+        .sort((a, b) => a - b);
+    })()`);
+    const waitBadges = async (where, expected, tries = 24) => {
+      for (let i = 0; i < tries; i++) {
+        const nums = await badgeNumbers(where);
+        if (nums.join(',') === expected) return nums;
+        await sleep(150);
+      }
+      return await badgeNumbers(where);
+    };
     const clickAt = async (point) => {
       if (!point) return false;
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y, button: 'none', buttons: 0 });
@@ -349,6 +367,28 @@ async function main() {
     const frames0 = await panelFrames();
     check('面板已并入 iframe 帧状态', !!frames0 && frames0.some((f) => f.id === child0.frameId && f.items === 0), frames0);
 
+    // 0. 没有拾取过（activeFrameId=0）时，验证也要能找到 iframe 内的 XPath
+    await panelEval(`document.querySelector('#validateBtn').click()`);
+    await sleep(300);
+    await panelEval(`(() => {
+      const input = document.querySelector('#validateXpath');
+      input.value = "//*[@id='pay-now']";
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    await sleep(1200);
+    const fallbackValidate = await panelEval(`({
+      activeFrameId,
+      previewFrameId,
+      status: document.querySelector('#validateStatus').textContent,
+      rows: document.querySelectorAll('#validateList .match-row').length
+    })`);
+    check('未拾取时验证自动落到 iframe 帧', !!fallbackValidate && fallbackValidate.previewFrameId === child0.frameId && fallbackValidate.status.indexOf('iframe 1') >= 0, fallbackValidate);
+    check('未拾取时验证命中 iframe 元素', !!fallbackValidate && fallbackValidate.rows === 1, fallbackValidate && fallbackValidate.rows);
+    const fallbackBoxes = await boxVisibility('child');
+    check('未拾取时验证高亮显示在 iframe 内', !!fallbackBoxes && fallbackBoxes.previews === 1, fallbackBoxes);
+    await panelEval(`document.querySelector('#validateBackBtn').click()`);
+    await sleep(400);
+
     // 1. iframe 内拾取
     await pickAt(await childPoint('#pay-now'));
     const childPay0 = (await childState(child0.frameId)).items;
@@ -369,16 +409,18 @@ async function main() {
     const topAfter = await topState();
     const cardsBoth = await waitCards(2);
     check('顶层拾取与 iframe 条目并存', topAfter.items.length === 1, topAfter.items.length);
-    check('卡片按顶层在前合并', cardsBoth.length === 2 && !cardsBoth[0].frame && cardsBoth[1].frame === 'iframe 1', cardsBoth.map((c) => c.frame));
-    check('两帧编号各自独立', cardsBoth[0].n === '1' && cardsBoth[1].n === '1', cardsBoth.map((c) => c.n));
+    check('卡片按拾取先后合并', cardsBoth.length === 2 && cardsBoth[0].frame === 'iframe 1' && !cardsBoth[1].frame, cardsBoth.map((c) => c.frame));
+    check('跨帧编号按拾取先后连续', cardsBoth[0].n === '1' && cardsBoth[1].n === '2', cardsBoth.map((c) => c.n));
+    const badgesTwo = { child: await waitBadges('child', '1'), top: await waitBadges('top', '2') };
+    check('页面角标编号跟随跨帧拾取顺序', badgesTwo.child.join(',') === '1' && badgesTwo.top.join(',') === '2', badgesTwo);
 
     // 3. 父级 / 回到原始元素都在 iframe 帧内执行
-    await clickCard(1, 'button[data-act="parent"]');
+    await clickCard(0, 'button[data-act="parent"]');
     await sleep(700);
     const childParent = (await childState(child0.frameId)).items;
     check('iframe 条目父级在所属帧执行', childParent[0].tag === 'div' && childParent[0].xpath === "//*[@id='cart']", childParent[0] && childParent[0].xpath);
     check('顶层条目不受 iframe 父级影响', (await topState()).items[0].tag === 'button');
-    await clickCard(1, '[data-root]');
+    await clickCard(0, '[data-root]');
     await sleep(700);
     const childRoot = (await childState(child0.frameId)).items;
     check('回到原始元素恢复 iframe 目标', childRoot[0].tag === 'button' && childRoot[0].xpath === "//*[@id='pay-now']", childRoot[0] && childRoot[0].xpath);
@@ -387,7 +429,11 @@ async function main() {
     await pickAt(await childPoint('#order-table tbody tr:nth-child(2) .op-btn'));
     const childTwo = (await childState(child0.frameId)).items;
     check('iframe 内可连续拾取第二条', childTwo.length === 2, childTwo.length);
-    await waitCards(3);
+    const cardsThree = await waitCards(3);
+    check('跨帧编号按拾取先后顺延', cardsThree.map((c) => c.n).join(',') === '1,2,3', cardsThree.map((c) => c.n));
+    check('新拾取条目排在末尾而不是按帧置底', cardsThree.map((c) => c.frame).join('|') === 'iframe 1||iframe 1', cardsThree.map((c) => c.frame));
+    const badgesThree = { child: await waitBadges('child', '1,3'), top: await waitBadges('top', '2') };
+    check('页面角标编号与列表一致（第三条为 3）', badgesThree.child.join(',') === '1,3' && badgesThree.top.join(',') === '2', badgesThree);
     await clickCard(2, 'button[data-act="mode"]');
     await sleep(800);
     const listItem = (await childState(child0.frameId)).items[1];
@@ -410,7 +456,7 @@ async function main() {
     check('iframe 条目切结构模式按列匹配', !!structItem && structItem.pathMode === 'structure' && structItem.xpath.indexOf('td[3]') >= 0, structItem && structItem.xpath);
 
     // 6. iframe 内锚点
-    await clickCard(1, 'button[data-act="anchor"]');
+    await clickCard(0, 'button[data-act="anchor"]');
     await sleep(400);
     const anchorMode = await panelEval('state.anchorMode');
     check('锚点模式落在 iframe 条目上', !!anchorMode && anchorMode.indexOf(child0.frameId + ':') === 0, anchorMode);
@@ -421,17 +467,17 @@ async function main() {
     const anchorCard = await waitCard((c) => c.frame === 'iframe 1' && c.facts.some((t) => t.indexOf('锚点式') >= 0));
     check('卡片显示 iframe 锚点表达式', !!anchorCard, anchorCard && anchorCard.facts);
     check('顶层条目没有锚点', !(await topState()).items[0].anchorMarked);
-    const anchorChip = await clickCard(1, '.path-modes button[data-mode="anchor"]');
+    const anchorChip = await clickCard(0, '.path-modes button[data-mode="anchor"]');
     await sleep(800);
     const anchorPathItem = (await childState(child0.frameId)).items[0];
     check('iframe 锚点模式 XPath 以锚点开头', !!(anchorChip && anchorPathItem && anchorPathItem.pathMode === 'anchor' && anchorPathItem.xpath.indexOf(anchorPathItem.anchorExpr + '/') === 0), anchorPathItem && { xpath: anchorPathItem.xpath, expr: anchorPathItem.anchorExpr });
 
     // 7. 重命名与手写 XPath 路由到 iframe 帧
-    await setCardInput(1, '.name-input', 'iframe支付');
+    await setCardInput(0, '.name-input', 'iframe支付');
     await sleep(600);
     const renamed = (await childState(child0.frameId)).items[0];
     check('iframe 条目重命名生效', !!renamed && renamed.name === 'iframe支付', renamed && renamed.name);
-    await setCardInput(1, '.xpath-input', '//*[@id="cart"]/button');
+    await setCardInput(0, '.xpath-input', '//*[@id="cart"]/button');
     await sleep(700);
     const manual = (await childState(child0.frameId)).items[0];
     check('iframe 手写 XPath 生效', !!manual && manual.origin === 'manual' && manual.xpath === '//*[@id="cart"]/button', manual && { origin: manual.origin, xpath: manual.xpath });
@@ -451,6 +497,7 @@ async function main() {
     check('顶层快照已写入 storage.session', keysBefore.indexOf('xpItems:' + tabId) >= 0, keysBefore);
     check('iframe 快照按 frameId 写入', keysBefore.indexOf('xpItems:' + tabId + ':f' + child0.frameId) >= 0, keysBefore);
 
+    await panelEval('document.activeElement && document.activeElement.blur && document.activeElement.blur()');
     const preReload = await panelEval('({ activeFrameId, frames: Array.from(frameStates.keys()) })');
     check('刷新前活动帧在 iframe', preReload.activeFrameId === child0.frameId, preReload);
     await pageEval('window.__xpStamp = 1');
@@ -482,6 +529,8 @@ async function main() {
     }
     const cardsRestored = await waitCards(3, 60);
     check('刷新后面板重新合并两帧卡片', cardsRestored.length === 3 && cardsRestored.filter((c) => c.frame).length === 2, cardsRestored.map((c) => ({ frame: c.frame, xpath: c.xpath })));
+    const badgesRestored = { child: await waitBadges('child', '1,3,3,3,3'), top: await waitBadges('top', '2') };
+    check('刷新后页面角标编号重新下发', badgesRestored.child.join(',') === '1,3,3,3,3' && badgesRestored.top.join(',') === '2', badgesRestored);
 
     // 10. 验证页跟随 iframe 帧（刷新后活动帧应回到原来的 iframe）
     let activeInfo = null;
@@ -571,6 +620,48 @@ async function main() {
     check('清空后 iframe 帧无条目', !!childNow, childNow && childNow.state.items.length);
     const keysCleared = await storageKeys();
     check('清空后两帧快照都移除', keysCleared.length === 0, keysCleared);
+
+    // 14. 验证预览跟随页面重渲染，并在内容脚本重新报到后自动重发
+    await panelEval(`document.querySelector('#validateBtn').click()`);
+    await sleep(300);
+    await panelEval(`(() => {
+      const input = document.querySelector('#validateXpath');
+      input.value = "//*[@id='top-btn']";
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    await sleep(1000);
+    check('验证预览初始高亮', (await boxVisibility('top')).previews === 1);
+
+    await pageEval(`(() => {
+      const el = document.querySelector('#top-btn');
+      el.outerHTML = '<button id="top-btn" class="top-action" type="button">顶层按钮</button>';
+    })()`);
+    await sleep(1200);
+    check('节点被替换后预览自动恢复', (await boxVisibility('top')).previews === 1);
+
+    await pageEval(`document.getElementById('top-btn').remove()`);
+    await sleep(700);
+    check('元素暂时消失后预览隐藏', (await boxVisibility('top')).previews === 0);
+
+    await pageEval(`(() => {
+      const btn = document.createElement('button');
+      btn.id = 'top-btn';
+      btn.className = 'top-action';
+      btn.type = 'button';
+      btn.textContent = '顶层按钮';
+      document.querySelector('#top-row').appendChild(btn);
+    })()`);
+    await sleep(1200);
+    check('元素重新出现后预览自动恢复', (await boxVisibility('top')).previews === 1);
+
+    await sendToFrame(0, { type: 'xp:clearPreview' });
+    await sleep(300);
+    check('预览被清掉后没有高亮', (await boxVisibility('top')).previews === 0);
+    await sendToFrame(0, { type: 'xp:frameReport' });
+    await sleep(1200);
+    check('内容脚本重新报到后验证自动重发', (await boxVisibility('top')).previews === 1);
+    await panelEval(`document.querySelector('#validateBackBtn').click()`);
+    await sleep(300);
   } catch (e) {
     check('no exception', false, String((e && e.stack) || e));
   } finally {

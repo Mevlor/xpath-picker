@@ -803,6 +803,11 @@ button.fact:hover {
 .primary-btn:active:not(:disabled) { transform: translateY(1px); }
 .primary-btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
 
+.settings-actions { display: flex; gap: 8px; }
+.settings-actions .primary-btn { flex: 1; }
+.settings-actions .ghost-btn { height: 36px; padding: 0 12px; }
+.ai-test-result { line-height: 1.4; word-break: break-word; }
+
 /* ---------- modal ---------- */
 .modal {
   position: fixed;

@@ -327,6 +327,9 @@ async function main() {
     check('prompt 要求 reason 交代业务值取舍', promptA.indexOf('必须在 reason 里写明') >= 0 && promptA.indexOf('让人来判断是否接受') >= 0);
     check('prompt 不再包含自检反馈章节', promptA.indexOf('## 上一轮结果的问题') < 0);
     check('prompt 禁止绝对路径', promptA.indexOf('禁止绝对路径（从 /html 开始逐层写死）') >= 0);
+    check('prompt 属性哈希含自增序号示例', promptA.indexOf('el-id-7185-149') >= 0 && promptA.indexOf('7185、149') >= 0);
+    check('prompt 属性哈希含短十六进制示例', promptA.indexOf('f85496') >= 0);
+    check('prompt 明确哈希规则只针对属性值', promptA.indexOf('此规则只针对属性值，可见文本不要套用') >= 0);
     check('prompt 下标克制但不禁用', promptA.indexOf('位置下标要克制使用，但不是禁用') >= 0);
     check('prompt 说明下标适用场景', promptA.indexOf('下标适合指向稳定作用域里的第几个同类项') >= 0);
     check('prompt 要求下标写进 reason', promptA.indexOf('必须在 reason 里说明下标指向的稳定结构') >= 0);

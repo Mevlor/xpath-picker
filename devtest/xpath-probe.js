@@ -233,6 +233,25 @@ async function main() {
     check('卡片预览文本按 80 字截断', !!longPreview && longPreview.ok && longPreview.matches.length === 1 && longPreview.matches[0].text.length === 81 && /…$/.test(longPreview.matches[0].text), longPreview.matches && longPreview.matches[0]);
     check('复制取到完整文本', !!longCopy && longCopy.ok && longCopy.text === LONG_NOTE, longCopy);
     check('索引失效时复制报错', !!missingCopy && missingCopy.ok === false, missingCopy);
+
+    // 属性值里的自增序号/短哈希不能整值精确匹配；短数字后缀（row-1）保持原样
+    const dynBefore = (await toTab({ type: 'xp:getState' })).items.length;
+    await toTab({ type: 'xp:setPick', on: true });
+    for (const selector of ['#el-id-7185-149', '#f85496', '#row-1']) {
+      await pageEval(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({ block: 'center' })`);
+      await sleep(150);
+      await click(await center(selector));
+    }
+    await toTab({ type: 'xp:setPick', on: false });
+    await sleep(300);
+    const dynItems = (await toTab({ type: 'xp:getState' })).items.slice(dynBefore);
+    report.dynXpaths = dynItems.map((item) => item.xpath);
+    check('动态序号 id 不再整值精确匹配', dynItems.length === 3 && dynItems[0].xpath.indexOf('7185') < 0 && dynItems[0].xpath.indexOf('149') < 0, dynItems[0] && dynItems[0].xpath);
+    check('短十六进制 id 不再整值精确匹配', dynItems.length === 3 && dynItems[1].xpath.indexOf('f85496') < 0, dynItems[1] && dynItems[1].xpath);
+    check('短数字后缀 id 仍可精确匹配', dynItems.length === 3 && dynItems[2].xpath === "//*[@id='row-1']", dynItems[2] && dynItems[2].xpath);
+    const dynCounts = [];
+    for (const item of dynItems) dynCounts.push(await countOf(item.xpath));
+    check('动态 id 回退后的 XPath 仍唯一命中', dynItems.length === 3 && dynCounts.every((count) => count === 1), dynCounts);
   } catch (e) {
     report.error = String((e && e.stack) || e);
     check('no exception', false, report.error);

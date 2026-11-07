@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "XPath Picker",
-  "version": "1.26.9",
+  "version": "1.28.9",
   "description": "可视化连续拾取元素并生成稳定 XPath（含 iframe 内元素），支持命名/编辑、变量批量复制、条目跨刷新恢复、深度冻结（定时器/动画/观察器/iframe）、XPath 验证、批量 AI 与后台生成。",
   "minimum_chrome_version": "119",
   "permissions": [

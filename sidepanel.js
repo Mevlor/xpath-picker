@@ -36,6 +36,8 @@ const els = {
   model: document.getElementById('model'),
   fullHtml: document.getElementById('fullHtml'),
   saveSettings: document.getElementById('saveSettings'),
+  testAI: document.getElementById('testAI'),
+  aiTestResult: document.getElementById('aiTestResult'),
   status: document.getElementById('status'),
   count: document.getElementById('count'),
   aiModal: document.getElementById('aiModal'),
@@ -82,8 +84,12 @@ let tabId = null;
 let refreshSeq = 0;
 let supported = false;
 let settings = Object.assign({}, DEFAULT_SETTINGS);
-let lastRenderedCount = 0;
 let renderedCards = new Map();
+// 列表滚动位置按「视口顶部那张卡片」记忆，刷新/帧重建后按条目放回原处
+let scrollAnchor = null;
+// 上次渲染见过的最大 pickedAt；只有更新的时间戳才算刚拾取，恢复快照不触发滚到底
+let lastPickStamp = 0;
+let pickStampSeeded = false;
 let polling = false;
 let toastTimer = null;
 let freezeShortcut = '';
@@ -92,6 +98,9 @@ const anchorBrokenSeen = new Set();
 // 每个 frame 各持自己那份条目；面板按 sender.frameId 归并，操作再按条目所属帧路由回去
 let frameStates = new Map();
 let frameLabels = new Map();
+// 每个帧最近一次上报的文档标识，以及已经回传过的角标编号，避免重复发消息
+let frameDocIds = new Map();
+const sentNumbers = new Map();
 let activeFrameId = 0;
 let frameScanSeq = 0;
 let frameScan = null;
@@ -116,9 +125,11 @@ const aiResumedKeys = new Set();
 let aiActive = 0;
 let aiBatch = null;
 let aiSaveTimer = null;
+let aiTestRunning = false;
 
 let validateSeq = 0;
 let validateTimer = null;
+let previewSyncTimer = null;
 
 init().catch((err) => {
   console.error(err);
@@ -127,6 +138,7 @@ init().catch((err) => {
 
 async function init() {
   bindEvents();
+  watchListWidth();
   updateFreezeCopy();
   loadCommandShortcut();
   await loadSettings();
@@ -149,6 +161,7 @@ async function init() {
 
     if (message.type === 'xp:push' && message.state) {
       applyFrameState(frameId, message.state);
+      syncPreviewAfterState();
       return;
     }
     if (message.type === 'xp:frameState' && message.state) {
@@ -158,10 +171,12 @@ async function init() {
         frameScan.seen.add(frameId);
       }
       applyFrameState(frameId, message.state);
+      syncPreviewAfterState();
       return;
     }
     if (message.type === 'xp:frameHello' && message.state) {
       applyFrameState(frameId, message.state);
+      syncPreviewAfterState();
       return;
     }
     if (message.type === 'xp:frameGone') {
@@ -203,6 +218,7 @@ function bindEvents() {
   els.settingsBtn.addEventListener('click', openSettings);
   els.backBtn.addEventListener('click', closeSettings);
   els.saveSettings.addEventListener('click', saveSettings);
+  els.testAI.addEventListener('click', testAIConnection);
 
   els.validateBtn.addEventListener('click', openValidate);
   els.validateBackBtn.addEventListener('click', closeValidate);
@@ -460,6 +476,8 @@ function resetFrames() {
   }
   frameStates = new Map();
   frameLabels = new Map();
+  frameDocIds = new Map();
+  sentNumbers.clear();
   activeFrameId = 0;
   lastStateJson = '';
   if (frameScan && frameScan.timer) clearTimeout(frameScan.timer);
@@ -470,7 +488,6 @@ function showUnsupported() {
   supported = false;
   resetFrames();
   state = EMPTY_STATE;
-  lastRenderedCount = 0;
   render();
   if (!els.validateView.hidden) runPreview();
 }
@@ -544,6 +561,8 @@ function dropFrame(frameId) {
   if (id === 0 || !frameStates.has(id)) return;
   const fs = frameStates.get(id);
   frameStates.delete(id);
+  frameDocIds.delete(id);
+  sentNumbers.delete(id);
   if (activeFrameId === id) {
     // iframe 刷新时旧帧先走、新帧后到：记下 URL，等新帧报到后恢复活动帧
     pendingActiveFrameUrl = String((fs && (fs.frameUrl || fs.url)) || pendingActiveFrameUrl);
@@ -582,6 +601,12 @@ function applyFrameState(frameId, next) {
   if (!next || !Array.isArray(next.items)) return;
   const id = normalizeFrameId(frameId);
   const prev = frameStates.get(id);
+  // 内容脚本重新注入（刷新/换页）后本地编号没了，必须重发一次
+  const docId = String(next.docId || '');
+  if (frameDocIds.get(id) !== docId) {
+    frameDocIds.set(id, docId);
+    sentNumbers.delete(id);
+  }
   frameStates.set(id, next);
   const url = String(next.frameUrl || next.url || '');
   // 用户在哪个帧拾取了元素，就把验证/预览切到哪个帧；恢复快照不改变活动帧
@@ -605,6 +630,31 @@ function applyResponse(frameId, res) {
     return true;
   }
   return false;
+}
+
+// 页面上的高亮角标按 id 显示编号；映射只在编号变化或帧换了文档时下发
+function syncFrameNumbers(list) {
+  if (!tabId) return;
+  const byFrame = new Map();
+  for (const fid of frameStates.keys()) byFrame.set(fid, {});
+  for (const item of list || []) {
+    if (!byFrame.has(item.frameId)) byFrame.set(item.frameId, {});
+    byFrame.get(item.frameId)[item.itemId] = item.n;
+  }
+  for (const [fid, numbers] of byFrame) {
+    const json = JSON.stringify(numbers);
+    if (sentNumbers.get(fid) === json) continue;
+    sentNumbers.set(fid, json);
+    const promise = sendToFrame(fid, { type: 'xp:setNumbers', numbers });
+    if (promise && typeof promise.then === 'function') {
+      promise.then((res) => {
+        if (!res) sentNumbers.delete(fid);
+      }).catch(() => sentNumbers.delete(fid));
+    }
+  }
+  for (const fid of Array.from(sentNumbers.keys())) {
+    if (!byFrame.has(fid)) sentNumbers.delete(fid);
+  }
 }
 
 function rebuildState() {
@@ -634,6 +684,15 @@ function rebuildState() {
       );
     }
   }
+
+  // 跨帧合并后按拾取先后排序：列表顺序和编号都跟着真实拾取顺序走，不按帧分组；
+  // 旧快照没有 pickedAt（0）时保持原来的帧顺序兜底
+  items.sort((a, b) => (a.pickedAt || 0) - (b.pickedAt || 0) || a.frameId - b.frameId);
+  items.forEach((item, index) => {
+    item.n = index + 1;
+  });
+  // 编号跨帧统一后，把每帧自己的映射回传，页面角标才能和列表一致
+  syncFrameNumbers(items);
 
   const next = {
     picking,
@@ -924,6 +983,8 @@ async function commitXPath(item, input, original) {
 function render() {
   const list = state.items || [];
   const total = list.length;
+  const keep = readScrollAnchor() || scrollAnchor;
+  if (keep) scrollAnchor = keep;
 
   els.pickBtn.disabled = !supported;
   els.pickBtn.classList.toggle('active', !!state.picking);
@@ -989,6 +1050,7 @@ function render() {
   // 按 id 复用卡片节点：只有内容真正变化的条目才重建，避免整列表闪烁
   const nextCards = new Map();
   const nodes = [];
+  const fitBoxes = [];
   for (const item of list) {
     const sig = JSON.stringify([item, state.anchorMode === item.id]);
     const prev = renderedCards.get(item.id);
@@ -997,6 +1059,7 @@ function render() {
       li = prev.li;
     } else {
       li = itemCard(item);
+      fitBoxes.push(li.querySelector('.xpath-input'));
       if (prev && prev.li.parentNode === els.items) prev.li.replaceWith(li);
     }
     nextCards.set(item.id, { li, sig });
@@ -1018,10 +1081,71 @@ function render() {
   els.empty.hidden = !supported || total > 0;
   els.unsupported.hidden = supported;
 
-  if (total > lastRenderedCount) {
+  // 列表可见且卡片进 DOM 后才能量出文本高度，长 XPath 不留滚动条。
+  // 必须放在 hidden 切换之后：第一条拾取时列表刚从隐藏变可见，提前量高度会得到 0
+  fitBoxes.forEach(fitXPathBox);
+
+  if (freshPick(list)) {
     els.items.scrollTop = els.items.scrollHeight;
+  } else {
+    restoreScrollAnchor(keep);
   }
-  lastRenderedCount = total;
+}
+
+// 视口顶部那张卡片：记住 id 和它离列表布局顶部的偏移，列表重建后按它回位。
+// 用 offsetTop 而不是 getBoundingClientRect，避免卡片入场动画的 translateY 干扰
+function readScrollAnchor() {
+  if (els.items.hidden || !els.items.children.length) return null;
+  const top = els.items.scrollTop;
+  for (const li of els.items.children) {
+    const offset = li.offsetTop - els.items.offsetTop;
+    if (offset + li.offsetHeight > top + 1) {
+      return { id: li.dataset.id, delta: offset - top };
+    }
+  }
+  return null;
+}
+
+function restoreScrollAnchor(anchor) {
+  if (!anchor) return;
+  const entry = renderedCards.get(anchor.id);
+  if (!entry || entry.li.parentNode !== els.items) return;
+  const offset = entry.li.offsetTop - els.items.offsetTop;
+  els.items.scrollTop = offset - anchor.delta;
+}
+
+// 恢复快照沿用旧 pickedAt，只有比已有条目更新的时间戳才是刚拾取
+function freshPick(list) {
+  let max = 0;
+  for (const item of list) max = Math.max(max, item.pickedAt || 0);
+  if (!pickStampSeeded) {
+    pickStampSeeded = true;
+    lastPickStamp = max;
+    return false;
+  }
+  if (max <= lastPickStamp) return false;
+  lastPickStamp = max;
+  return true;
+}
+
+// XPath 框按内容伸缩，上下限由 CSS 的 min/max-height 控制
+function fitXPathBox(textarea) {
+  if (!textarea || !textarea.clientHeight) return;
+  textarea.style.height = 'auto';
+  const border = textarea.offsetHeight - textarea.clientHeight;
+  textarea.style.height = textarea.scrollHeight + border + 'px';
+}
+
+// 侧栏重新打开或拖动宽度后折行会变，按新宽度重算，避免沿用旧布局量出的高度
+let itemBoxWidth = 0;
+function watchListWidth() {
+  if (typeof ResizeObserver !== 'function') return;
+  new ResizeObserver(() => {
+    const width = els.items.clientWidth;
+    if (!width || width === itemBoxWidth) return;
+    itemBoxWidth = width;
+    els.items.querySelectorAll('.xpath-input').forEach(fitXPathBox);
+  }).observe(els.items);
 }
 
 function itemCard(item) {
@@ -1255,9 +1379,11 @@ function itemCard(item) {
     } else if (event.key === 'Escape') {
       event.stopPropagation();
       xpathInput.value = item.xpath || '';
+      fitXPathBox(xpathInput);
       xpathInput.blur();
     }
   });
+  xpathInput.addEventListener('input', () => fitXPathBox(xpathInput));
   xpathInput.addEventListener('blur', () => {
     if (xpathSkipBlur) return;
     commitXPath(item, xpathInput, item.xpath || '');
@@ -1368,20 +1494,108 @@ async function loadSettings() {
   } catch (e) {}
 }
 
-async function saveSettings() {
-  const apiBase = (els.apiBase.value.trim() || DEFAULT_SETTINGS.apiBase).replace(/\/+$/, '');
-  const apiKey = els.apiKey.value.trim();
-  const model = els.model.value.trim() || DEFAULT_SETTINGS.model;
-  const fullHtml = !!els.fullHtml.checked;
-  settings = { apiBase, apiKey, model, fullHtml };
+function readSettingsForm() {
+  return {
+    apiBase: (els.apiBase.value.trim() || DEFAULT_SETTINGS.apiBase).replace(/\/+$/, ''),
+    apiKey: els.apiKey.value.trim(),
+    model: els.model.value.trim() || DEFAULT_SETTINGS.model,
+    fullHtml: !!els.fullHtml.checked
+  };
+}
+
+async function persistSettings(next) {
+  settings = next;
   try {
     await chrome.storage.local.set({ xpSettings: settings });
-    toast('设置已保存');
+    return true;
   } catch (e) {
-    toast('保存失败');
+    return false;
   }
-  els.apiBase.value = apiBase;
-  els.model.value = model;
+}
+
+async function saveSettings() {
+  const next = readSettingsForm();
+  const ok = await persistSettings(next);
+  toast(ok ? '设置已保存' : '保存失败');
+  els.apiBase.value = next.apiBase;
+  els.model.value = next.model;
+}
+
+function setAITestStatus(text, kind) {
+  const el = els.aiTestResult;
+  el.hidden = !text;
+  el.textContent = text || '';
+  el.className = 'valid ai-test-result' + (kind ? ' ' + kind : '');
+}
+
+async function testAIConnection() {
+  if (aiTestRunning) return;
+  const form = readSettingsForm();
+  const apiBase = form.apiBase;
+  const apiKey = form.apiKey;
+  const model = form.model;
+  const configError = aiConfigError({ apiBase, apiKey });
+  if (configError) {
+    setAITestStatus(configError, 'bad');
+    return;
+  }
+
+  aiTestRunning = true;
+  els.testAI.disabled = true;
+  els.testAI.textContent = '测试中…';
+  setAITestStatus('正在连接…', 'run');
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  const startedAt = Date.now();
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey) headers.Authorization = 'Bearer ' + apiKey;
+
+  try {
+    let response;
+    try {
+      response = await fetch(endpointOf(apiBase), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: '只回复 OK' }],
+          temperature: 0.2
+        }),
+        signal: controller.signal
+      });
+    } catch (err) {
+      if (err && err.name === 'AbortError') throw new Error('连接超时（15 秒），请检查接口地址');
+      throw new Error('网络请求失败：' + ((err && err.message) || err));
+    }
+    if (!response.ok) {
+      let detail = '';
+      try { detail = truncate(await response.text(), 200); } catch (e) {}
+      throw new Error('接口返回 HTTP ' + response.status + (detail ? '：' + detail : ''));
+    }
+    let data;
+    try {
+      data = await response.json();
+    } catch (err) {
+      if (err && err.name === 'AbortError') throw new Error('连接超时（15 秒），请检查接口地址');
+      throw new Error('接口返回内容无法解析：' + ((err && err.message) || err));
+    }
+    if (!extractContent(data)) throw new Error('接口未返回内容，请检查模型名称');
+    const saved = await persistSettings(form);
+    els.apiBase.value = form.apiBase;
+    els.model.value = form.model;
+    setAITestStatus(
+      '连接正常 · ' + (Date.now() - startedAt) + ' ms' + (saved ? '，已保存设置' : '，但保存失败'),
+      saved ? 'ok' : 'warn'
+    );
+  } catch (err) {
+    setAITestStatus('连接失败：' + ((err && err.message) || err), 'bad');
+  } finally {
+    clearTimeout(timer);
+    aiTestRunning = false;
+    els.testAI.disabled = false;
+    els.testAI.textContent = '测试连接';
+  }
 }
 
 /* ---------------- validate ---------------- */
@@ -1407,6 +1621,7 @@ function closeValidate() {
   els.validateBtn.classList.remove('active');
   validateSeq++;
   clearTimeout(validateTimer);
+  clearTimeout(previewSyncTimer);
   clearPreviewIn(tabId);
   setItemHighlight(true);
   els.validateList.textContent = '';
@@ -1417,6 +1632,7 @@ function closeValidate() {
 function clearValidate() {
   validateSeq++;
   clearTimeout(validateTimer);
+  clearTimeout(previewSyncTimer);
   els.validateXpath.value = '';
   els.validateList.textContent = '';
   els.validateEmpty.hidden = true;
@@ -1430,10 +1646,18 @@ function onValidateInput() {
   validateTimer = setTimeout(runPreview, 350);
 }
 
+// 页面刷新/重新渲染后内容脚本会重新报到；验证视图开着就把 XPath 再发一次，
+// 新文档里没有旧的预览快照，只有面板重发才能恢复蚂蚁线
+function syncPreviewAfterState() {
+  if (els.validateView.hidden || !els.validateXpath.value.trim()) return;
+  clearTimeout(previewSyncTimer);
+  previewSyncTimer = setTimeout(runPreview, 200);
+}
+
 async function runPreview() {
   const xpath = els.validateXpath.value.trim();
   const seq = ++validateSeq;
-  const frameId = activeFrameId;
+  let frameId = activeFrameId;
   const suffix = frameId ? ' · ' + frameLabelOf(frameId) : '';
   if (!xpath) {
     els.validateList.textContent = '';
@@ -1450,20 +1674,35 @@ async function runPreview() {
     return;
   }
   setValidateStatus('验证中…' + suffix, '');
-  const res = await sendToFrame(frameId, { type: 'xp:previewXPath', xpath });
+  let res = await sendToFrame(frameId, { type: 'xp:previewXPath', xpath });
   if (seq !== validateSeq || els.validateView.hidden) return;
+  // 还没在页面拾取过时活动帧固定是顶层，iframe 里的 XPath 会一直「无匹配」；
+  // 活动帧没命中就按 顶层 → 各子框架 顺序探测，落到第一个有匹配的文档
+  if (!res || (!res.error && !res.count)) {
+    const candidates = [0].concat(childFrameIds()).filter((id) => id !== frameId);
+    for (const id of candidates) {
+      const other = await sendToFrame(id, { type: 'xp:previewXPath', xpath });
+      if (seq !== validateSeq || els.validateView.hidden) return;
+      if (other && !other.error && other.count) {
+        frameId = id;
+        res = other;
+        break;
+      }
+    }
+  }
+  const resultSuffix = frameId ? ' · ' + frameLabelOf(frameId) : '';
   if (!res) {
     els.validateList.textContent = '';
     els.validateEmpty.hidden = false;
     els.validateEmpty.textContent = '无法连接到页面，请刷新后重试';
-    setValidateStatus('无法连接到页面' + suffix, 'bad');
+    setValidateStatus('无法连接到页面' + resultSuffix, 'bad');
     return;
   }
   if (res.error) {
     els.validateList.textContent = '';
     els.validateEmpty.hidden = false;
     els.validateEmpty.textContent = 'XPath 语法错误';
-    setValidateStatus('XPath 错误：' + res.error + suffix, 'bad');
+    setValidateStatus('XPath 错误：' + res.error + resultSuffix, 'bad');
     return;
   }
 
@@ -1473,19 +1712,19 @@ async function runPreview() {
   if (!res.count) {
     els.validateEmpty.textContent = '没有匹配的元素';
     els.validateEmpty.hidden = false;
-    setValidateStatus('无匹配' + suffix, 'warn');
+    setValidateStatus('无匹配' + resultSuffix, 'warn');
   } else if (!matches.length) {
     els.validateEmpty.textContent = '匹配到的不是元素节点';
     els.validateEmpty.hidden = false;
-    setValidateStatus('匹配 ' + res.count + ' 个节点' + suffix, 'warn');
+    setValidateStatus('匹配 ' + res.count + ' 个节点' + resultSuffix, 'warn');
   } else {
     els.validateEmpty.hidden = true;
     if (res.count === 1) {
-      setValidateStatus('唯一匹配 1 个元素' + suffix, 'ok');
+      setValidateStatus('唯一匹配 1 个元素' + resultSuffix, 'ok');
     } else if (res.shown < res.count) {
-      setValidateStatus('匹配 ' + res.count + ' 个元素，高亮前 ' + res.shown + ' 个' + suffix, 'ok');
+      setValidateStatus('匹配 ' + res.count + ' 个元素，高亮前 ' + res.shown + ' 个' + resultSuffix, 'ok');
     } else {
-      setValidateStatus('匹配 ' + res.count + ' 个元素' + suffix, 'ok');
+      setValidateStatus('匹配 ' + res.count + ' 个元素' + resultSuffix, 'ok');
     }
   }
 }
@@ -1756,8 +1995,9 @@ function runBatchAI() {
     toast('还没有可生成 XPath 的元素');
     return;
   }
-  if (!settings.apiBase) {
-    toast('请先在「AI 设置」中填写 API 地址');
+  const configError = aiConfigError();
+  if (configError) {
+    toast(configError);
     openSettings();
     return;
   }
@@ -2007,6 +2247,18 @@ function setMode(mode) {
   if (!els.aiResult.hidden) validateCurrent();
 }
 
+function aiConfigError(config) {
+  const conf = config || settings;
+  if (!String(conf.apiBase || '').trim()) return '请先在「AI 设置」中填写 API 地址';
+  // 官方地址必须带 Key；其它地址视为本地/自建服务，允许留空
+  let host = '';
+  try {
+    host = new URL(conf.apiBase).hostname;
+  } catch (e) {}
+  if (!conf.apiKey && host === 'api.openai.com') return '请先在「AI 设置」中填写 API Key';
+  return '';
+}
+
 function runAI() {
   if (!aiItemId) return;
 
@@ -2015,8 +2267,9 @@ function runAI() {
     showAIError('元素已失效，请重新拾取');
     return;
   }
-  if (!settings.apiBase) {
-    showAIError('请先在「AI 设置」中填写 API 地址');
+  const configError = aiConfigError();
+  if (configError) {
+    showAIError(configError);
     return;
   }
 
@@ -2037,6 +2290,8 @@ function runAI() {
 }
 
 async function requestAI(context, opts) {
+  const configError = aiConfigError();
+  if (configError) throw new Error(configError);
   const mode = opts && opts.mode === 'list' ? 'list' : 'unique';
   const extra = opts && opts.extra ? opts.extra : '';
   const currentName = opts ? opts.currentName : '';
@@ -2354,8 +2609,8 @@ function buildPrompt(context, mode, extra, currentName) {
   lines.push('## 生成规则');
   lines.push('1. 只输出 XPath 1.0 语法，必须能被 document.evaluate 执行。');
   lines.push('2. 优先使用稳定语义：data-*、aria-*、name、role、type、placeholder、稳定文本和语义化标签。');
-  lines.push('3. 智能识别哈希片段：不仅是 class，id、data-*、aria-* 等属性值里也可能夹着随机串（如 8f3a2b、k29fa、css-1x2y3z、:r5:）。过滤哈希后保留稳定语义单词，用 starts-with() 或 contains() 组合定位。');
-  lines.push('4. 避免自动生成的 class、随机或哈希 id、含无意义数字后缀的动态值。');
+  lines.push('3. 智能识别哈希片段：不仅是 class，id、data-*、aria-* 等属性值里也可能夹着随机串（如 8f3a2b、k29fa、css-1x2y3z、:r5:）。除了长随机串，还要识别自增序号和短哈希，例如 el-id-7185-149（数字段 7185、149）或 f85496（6 位十六进制）。这类属性值不能整值精确匹配，只能保留稳定前缀或语义部分，用 starts-with() 或 contains() 组合定位。此规则只针对属性值，可见文本不要套用。');
+  lines.push('4. 避免自动生成的 class、随机或哈希 id、含自增序号或无意义数字后缀的属性值；可见文本里的数字仍按文本稳定性规则判断。');
   lines.push(
     '5. 禁止绝对路径（从 /html 开始逐层写死）。位置下标要克制使用，但不是禁用：\n' +
       '   - 能用稳定属性、固定结构或界面固定文字唯一确定时，不要用 [n] 或 (//x)[n] 来「制造」唯一性；\n' +

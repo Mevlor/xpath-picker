@@ -250,7 +250,9 @@ async function main() {
     const aiGuards = await pageEval(`(async () => {
       const prevFetch = window.fetch;
       const prevPrompt = buildPrompt;
+      const prevSettings = settings;
       buildPrompt = () => 'prompt';
+      settings = Object.assign({}, DEFAULT_SETTINGS, { apiKey: 'test-key' });
       const run = async (fakeFetch) => {
         window.fetch = fakeFetch;
         try { await requestAI({}, { mode: 'unique' }); return ''; }
@@ -258,13 +260,57 @@ async function main() {
       };
       const abortedFetch = await run(async () => { throw new DOMException('aborted', 'AbortError'); });
       const abortedBody = await run(async () => ({ ok: true, status: 200, json: async () => { throw new DOMException('aborted', 'AbortError'); }, text: async () => '' }));
+      let fetchCalls = 0;
+      settings = Object.assign({}, DEFAULT_SETTINGS);
+      const unconfigured = await run(async () => { fetchCalls++; return { ok: true, status: 200, json: async () => ({}) }; });
+      settings = Object.assign({}, DEFAULT_SETTINGS, { apiBase: 'http://127.0.0.1:11434/v1', apiKey: '' });
+      const localBaseOk = aiConfigError();
+      settings = prevSettings;
       window.fetch = prevFetch;
       buildPrompt = prevPrompt;
-      return { abortedFetch, abortedBody, concurrent: AI_MAX_CONCURRENT };
+      return { abortedFetch, abortedBody, unconfigured, fetchCalls, localBaseOk, concurrent: AI_MAX_CONCURRENT };
     })()`);
     check('批量 AI 并发上限为 5', aiGuards.concurrent === 5, aiGuards.concurrent);
     check('连接阶段中断报 60 秒超时', aiGuards.abortedFetch === '请求超时（60 秒），请检查接口地址或稍后重试', aiGuards.abortedFetch);
     check('读取响应体中断也报超时', aiGuards.abortedBody === '请求超时（60 秒），请检查接口地址或稍后重试', aiGuards.abortedBody);
+    check('未配置 AI Key 时直接报错且不发请求', aiGuards.unconfigured === '请先在「AI 设置」中填写 API Key' && aiGuards.fetchCalls === 0, aiGuards);
+    check('自建地址允许留空 Key', aiGuards.localBaseOk === '', aiGuards.localBaseOk);
+
+    const aiTest = await pageEval(`(async () => {
+      const prevFetch = window.fetch;
+      const prevSettings = settings;
+      const calls = [];
+      const setFields = (base, key) => {
+        els.apiBase.value = base;
+        els.apiKey.value = key;
+        els.model.value = 'test-model';
+      };
+      window.fetch = async (url, init) => {
+        calls.push({ url, auth: (init.headers && init.headers.Authorization) || '', model: JSON.parse(init.body).model });
+        return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: 'OK' } }] }) };
+      };
+      setFields('http://127.0.0.1:11434/v1', '');
+      await testAIConnection();
+      const okText = els.aiTestResult.textContent;
+      const okClass = els.aiTestResult.className;
+      const runtimeBase = settings.apiBase;
+      const stored = await chrome.storage.local.get('xpSettings');
+      const saved = stored && stored.xpSettings ? stored.xpSettings : null;
+      const before = calls.length;
+      setFields('https://api.openai.com/v1', '');
+      await testAIConnection();
+      const missingText = els.aiTestResult.textContent;
+      const missingCalls = calls.length - before;
+      window.fetch = prevFetch;
+      settings = prevSettings;
+      await chrome.storage.local.remove('xpSettings');
+      setFields('', '');
+      return { okText, okClass, runtimeBase, saved, missingText, missingCalls, calls, button: !!els.testAI };
+    })()`);
+    check('AI 设置有测试连接按钮', aiTest.button);
+    check('测试连接请求 chat/completions 且不带空 Key', aiTest.calls.length === 1 && aiTest.calls[0].url === 'http://127.0.0.1:11434/v1/chat/completions' && aiTest.calls[0].auth === '' && aiTest.calls[0].model === 'test-model', aiTest.calls);
+    check('测试连接成功显示耗时并自动保存', aiTest.okClass.indexOf('ok') >= 0 && /^连接正常 · \d+ ms，已保存设置$/.test(aiTest.okText) && aiTest.runtimeBase === 'http://127.0.0.1:11434/v1' && !!aiTest.saved && aiTest.saved.apiBase === 'http://127.0.0.1:11434/v1' && aiTest.saved.apiKey === '' && aiTest.saved.model === 'test-model', { text: aiTest.okText, runtimeBase: aiTest.runtimeBase, saved: aiTest.saved });
+    check('未填 Key 时测试连接直接报错不发请求', aiTest.missingCalls === 0 && aiTest.missingText === '请先在「AI 设置」中填写 API Key', aiTest.missingText);
 
     const matchCopy = await pageEval(`(async () => {
       els.validateView.hidden = false;
@@ -332,6 +378,91 @@ async function main() {
         /^状态_唯一 = ".*"$/.test(modeLines[0]) &&
         /^行_列表 = ".*"$/.test(modeLines[1]),
       modeLines
+    );
+
+    // 页面刷新/换帧后列表重建，滚动位置按视口顶部那张卡片恢复（v1.28.6）
+    const scrollKeep = await pageEval(`(() => {
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      const base = ${JSON.stringify(baseItem)};
+      const items = Array.from({ length: 10 }, (_, i) => Object.assign({}, base, {
+        id: 's' + i, n: i + 1, name: '条目' + (i + 1), pickedAt: 1000 + i
+      }));
+      const apply = (list) => applyFrameState(0, {
+        picking: false, frozen: false, freezeDeep: false, freezeStats: null,
+        frames: 0, anchorMode: null, url: 'https://example.com/', items: list
+      });
+      const topCard = (box) => Array.from(box.children).find(
+        (li) => li.offsetTop - box.offsetTop + li.offsetHeight > box.scrollTop + 1
+      ).dataset.id;
+      supported = true;
+      els.unsupported.hidden = true;
+      apply(items);
+      const box = els.items;
+      const max = box.scrollHeight - box.clientHeight;
+      box.scrollTop = Math.round(max / 2);
+      const before = box.scrollTop;
+      const anchorId = topCard(box);
+      apply([]);
+      apply(items);
+      return { before, after: box.scrollTop, max, anchorId, anchorAfter: topCard(box) };
+    })()`);
+    check(
+      '刷新恢复列表后滚动位置留在原处',
+      scrollKeep.before > 0 && Math.abs(scrollKeep.after - scrollKeep.before) <= 2 && scrollKeep.after < scrollKeep.max,
+      scrollKeep
+    );
+    check('刷新后视口顶部仍是同一条目', scrollKeep.anchorAfter === scrollKeep.anchorId, scrollKeep);
+
+    // XPath 框 45-110px 随文本自适应（v1.28.7）
+    const autoHeight = await pageEval(`(() => {
+      const base = ${JSON.stringify(baseItem)};
+      const apply = (xpath) => applyFrameState(0, {
+        picking: false, frozen: false, freezeDeep: false, freezeStats: null,
+        frames: 0, anchorMode: null, url: 'https://example.com/',
+        items: [Object.assign({}, base, { id: 'h1', n: 1, name: '长路径', xpath, pickedAt: 2000 })]
+      });
+      const heightOf = () => els.items.querySelector('.xpath-input').offsetHeight;
+      apply([]);
+      apply('//div[' + 'c'.repeat(240) + ']');
+      const firstLong = heightOf();
+      apply('//div[@id="short"]');
+      const short = heightOf();
+      const box = els.items.querySelector('.xpath-input');
+      box.value = '//p[' + 'b'.repeat(240) + ']';
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      const typed = box.offsetHeight;
+      apply('//div[' + 'a'.repeat(240) + ']');
+      const long = heightOf();
+      apply('//div[' + 'a'.repeat(2000) + ']');
+      const huge = heightOf();
+      return { firstLong, short, typed, long, huge };
+    })()`);
+    check('列表从空到第一条时 XPath 框也自适应', autoHeight.firstLong > autoHeight.short + 10, autoHeight);
+    check('输入长文本时 XPath 框实时增高', autoHeight.typed > autoHeight.short + 10, autoHeight);
+    check('XPath 框随长文本增高', autoHeight.long > autoHeight.short + 10 && autoHeight.long <= 110, autoHeight);
+    check('XPath 框高度上限 110px', autoHeight.huge === 110, autoHeight);
+
+    // 侧栏重新打开/拖动宽度后折行变化，要按新宽度重算（v1.28.9）
+    const widthFit = await pageEval(`(async () => {
+      const base = ${JSON.stringify(baseItem)};
+      applyFrameState(0, {
+        picking: false, frozen: false, freezeDeep: false, freezeStats: null,
+        frames: 0, anchorMode: null, url: 'https://example.com/',
+        items: [Object.assign({}, base, { id: 'w1', n: 1, name: '宽度', xpath: '//div[' + 'a'.repeat(240) + ']', pickedAt: 3000 })]
+      });
+      const box = els.items.querySelector('.xpath-input');
+      const wide = box.offsetHeight;
+      els.items.style.width = '220px';
+      await new Promise((r) => setTimeout(r, 150));
+      const narrow = box.offsetHeight;
+      els.items.style.width = '';
+      await new Promise((r) => setTimeout(r, 150));
+      return { wide, narrow, back: box.offsetHeight };
+    })()`);
+    check(
+      '宽度变化后 XPath 框按新折行重算',
+      widthFit.narrow > widthFit.wide && Math.abs(widthFit.back - widthFit.wide) <= 2,
+      widthFit
     );
   } catch (e) {
     check('no exception', false, String((e && e.stack) || e));

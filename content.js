@@ -59,6 +59,10 @@
   let anchorModeId = null;
   let items = [];
   let pickSeq = 0;
+  // 页面角标编号由面板跨帧统一分配，内容脚本只负责按 id 映射显示
+  let itemNumbers = {};
+  // 每次注入生成一个文档标识：面板据此判断帧是否换了新文档，需要重发编号
+  const DOC_ID = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
   // 用户最近一次拾取的时间戳；恢复快照不算，面板据此判断验证/预览该跟随哪个 frame
   let lastPickAt = 0;
   let hoverEl = null;
@@ -67,6 +71,8 @@
   let previewBoxes = [];
   let previewNodes = [];
   let previewCount = 0;
+  // 存下验证的 XPath：页面重渲染替换节点后可以重新查询，不必等用户再次输入
+  let previewXPath = '';
   // 验证视图打开时面板会让拾取高亮让位，只保留验证蚂蚁线
   let suppressItemBoxes = false;
   let flashIndex = -1;
@@ -598,16 +604,24 @@
     return words[words.length - 1];
   }
 
+  // 属性值里的自增序号/短哈希，和 class 的 isHashSegment 用同一套阈值：
+  // 纯数字 ≥4 位、十六进制 ≥4 位、字母+数字 ≥5 位。只用于属性值，不用于可见文本。
+  function isDynamicAttrToken(token) {
+    const t = String(token || '');
+    return /\d/.test(t) && isHashSegment(t);
+  }
+
   function attrExpressions(tag, name, value) {
     const text = String(value == null ? '' : value);
     const out = [];
     if (!text || text.length > 120 || /^\d+$/.test(text)) return out;
-    if (!valueHasHash(text)) {
+    const dynamic = valueHasHash(text) || tokenParts(text).some((part) => isDynamicAttrToken(part.text));
+    if (!dynamic) {
       out.push('//' + tag + '[@' + name + '=' + xpLiteral(text) + ']');
       return out;
     }
     const parts = tokenParts(text);
-    const first = parts.find((part) => isHashedToken(part.text));
+    const first = parts.find((part) => isHashedToken(part.text) || isDynamicAttrToken(part.text));
     if (first && first.start > 0) {
       const prefix = text.slice(0, first.start).replace(/[^\p{L}\p{N}]+$/u, '');
       const head = prefix.split(/[^\p{L}\p{N}]+/u)[0] || '';
@@ -2121,6 +2135,7 @@
 
   function clearPreview() {
     flashIndex = -1;
+    previewXPath = '';
     if (!previewNodes.length && !previewCount) return;
     previewNodes = [];
     previewCount = 0;
@@ -2135,11 +2150,13 @@
     }
     const result = evaluateXPath(raw, MAX_PREVIEW_MATCHES);
     if (result.error) {
+      previewXPath = '';
       previewNodes = [];
       previewCount = 0;
       scheduleDraw();
       return { ok: false, count: 0, shown: 0, matches: [], error: result.error };
     }
+    previewXPath = raw;
     previewNodes = result.nodes;
     previewCount = result.count;
     flashIndex = -1;
@@ -2151,6 +2168,15 @@
       matches.push(summary);
     }
     return { ok: true, count: result.count, shown: previewNodes.length, matches };
+  }
+
+  // 页面重渲染会替换掉快照里的节点；快照失效时按存下的 XPath 重新查询，
+  // 元素暂时不存在也继续等，出现后自动恢复蚂蚁线
+  function refreshDetachedPreview() {
+    if (!previewXPath) return;
+    const stale = previewCount === 0 || previewNodes.some((node) => !node.isConnected);
+    if (!stale) return;
+    setPreview(previewXPath);
   }
 
   function focusPreview(index) {
@@ -2501,10 +2527,12 @@
 
   function addItem(el) {
     pickSeq += 1;
-    lastPickAt = Date.now();
+    const pickedAt = Date.now();
+    lastPickAt = pickedAt;
     itemsOwned = true;
     items.push({
-      id: 'xp_' + Date.now().toString(36) + '_' + pickSeq,
+      id: 'xp_' + pickedAt.toString(36) + '_' + pickSeq,
+      pickedAt,
       color: COLORS[(pickSeq - 1) % COLORS.length],
       root: el,
       anchor: el,
@@ -2634,7 +2662,8 @@
     if (!document.hidden && (items.length || picking || previewNodes.length)) scheduleDraw();
   });
   setInterval(() => {
-    if (!items.length && !picking && !previewNodes.length) return;
+    if (!items.length && !picking && !previewNodes.length && !previewXPath) return;
+    refreshDetachedPreview();
     const revived = reviveStale();
     const signature = validitySignature();
     if (revived || signature !== validSignature) {
@@ -2668,6 +2697,7 @@
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
+      const n = itemNumbers[item.id] || i + 1;
       const relation =
         item.root && item.target ? relationBetween(item.root, item.target) : null;
       if (item.customXPath) {
@@ -2677,7 +2707,7 @@
           entries.push({
             el: result.nodes[k],
             color: item.color,
-            n: i + 1,
+            n,
             seq: result.nodes.length > 1 ? k + 1 : 0,
             rel: ''
           });
@@ -2692,7 +2722,7 @@
             entries.push({
               el: node,
               color: item.color,
-              n: i + 1,
+              n,
               seq: k + 1,
               rel: node === item.target && relation && relation.kind !== 'root' ? relation.label : ''
             });
@@ -2703,7 +2733,7 @@
           entries.push({
             el: item.target,
             color: item.color,
-            n: i + 1,
+            n,
             seq: 0,
             rel: relation && relation.kind !== 'root' ? relation.label : ''
           });
@@ -2715,7 +2745,7 @@
         item.anchor.isConnected &&
         item.anchor !== item.target
       ) {
-        anchors.push({ el: item.anchor, color: item.color, n: i + 1 });
+        anchors.push({ el: item.anchor, color: item.color, n });
       }
     }
 
@@ -2928,8 +2958,10 @@
         layer.appendChild(modeChip);
       }
       const index = items.findIndex((item) => item.id === anchorModeId);
+      const anchorItem = index >= 0 ? items[index] : null;
+      const anchorNo = anchorItem ? itemNumbers[anchorItem.id] || index + 1 : 0;
       const text =
-        '为 #' + (index + 1) + ' 选择锚点 · 点击元素设置 · Esc 取消';
+        '为 #' + anchorNo + ' 选择锚点 · 点击元素设置 · Esc 取消';
       if (modeChip.textContent !== text) modeChip.textContent = text;
       modeChip.style.display = 'block';
     } else if (picking) {
@@ -2988,6 +3020,7 @@
       anchorMode: anchorModeId,
       pickedAt: lastPickAt,
       url: location.href,
+      docId: DOC_ID,
       isTop: IS_TOP,
       frameUrl: persistedUrl(location.href),
       frameTitle: document.title,
@@ -3053,6 +3086,7 @@
         return {
           id: item.id,
           n: index + 1,
+          pickedAt: item.pickedAt || 0,
           color: item.color,
           tag: connected ? snap.tag : snap.tag || '?',
           label: connected ? snap.label : snap.label || '元素已失效',
@@ -3147,6 +3181,7 @@
   function serializeItems() {
     return items.map((item) => ({
       id: item.id,
+      pickedAt: item.pickedAt || 0,
       color: item.color,
       name: item.name || '',
       nameCustom: !!item.nameCustom,
@@ -3192,6 +3227,7 @@
     if (!raw || typeof raw.id !== 'string' || !raw.id) return null;
     const item = {
       id: raw.id,
+      pickedAt: Number(raw.pickedAt) || 0,
       color: raw.color || COLORS[0],
       root: null,
       anchor: null,
@@ -3944,6 +3980,16 @@
           scheduleDraw();
           sendResponse(getState());
           break;
+        case 'xp:setNumbers': {
+          const nextNumbers =
+            message.numbers && typeof message.numbers === 'object' ? message.numbers : {};
+          if (JSON.stringify(nextNumbers) !== JSON.stringify(itemNumbers)) {
+            itemNumbers = nextNumbers;
+            scheduleDraw();
+          }
+          sendResponse({ ok: true });
+          break;
+        }
         case 'xp:focusPreview':
           sendResponse(focusPreview(message.index));
           break;

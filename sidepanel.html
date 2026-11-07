@@ -103,7 +103,11 @@
         <span class="field-note">关闭时祖先只发送自身标签与属性，子节点用注释概括，更省 token；目标元素始终发送完整代码</span>
       </label>
 
-      <button id="saveSettings" class="primary-btn" type="button">保存设置</button>
+      <div class="settings-actions">
+        <button id="saveSettings" class="primary-btn" type="button">保存设置</button>
+        <button id="testAI" class="ghost-btn" type="button" title="用当前填写的内容发送一条最小请求，验证地址、Key 与模型；成功后自动保存">测试连接</button>
+      </div>
+      <div id="aiTestResult" class="valid ai-test-result" hidden></div>
     </section>
 
     <section id="validateView" class="settings validate" hidden>
